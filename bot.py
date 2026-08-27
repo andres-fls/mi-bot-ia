@@ -201,9 +201,8 @@ def run_flask_server():
     port = int(os.environ.get('PORT', 10000))
     app_flask.run(host='0.0.0.0', port=port)
 
-# --- MAIN ---
 if __name__ == '__main__':
-    # 1. Iniciar Servidor Web en hilo separado (para engañar a Render)
+    # 1. Iniciar Servidor Web en hilo separado
     thread = threading.Thread(target=run_flask_server, daemon=True)
     thread.start()
     logger.info(f"✅ Servidor web iniciado en puerto {os.environ.get('PORT', 10000)}")
@@ -213,7 +212,6 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # Manejar comandos con argumentos también como texto si se prefiere, o agregar handlers específicos
+    application.add_handler(MessageHandler(filters.TEXT, handle_message)) 
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
