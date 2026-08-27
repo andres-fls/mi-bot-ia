@@ -121,39 +121,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
     
-    # --- NUEVA LÓGICA DE DETECCIÓN INTELIGENTE ---
+        # --- LÓGICA DE DETECCIÓN INTELIGENTE MEJORADA ---
     tipo_archivo = None
     texto_real = user_text
     texto_lower = user_text.lower()
 
-    # Lista de palabras clave que indican deseo de archivo
-    keywords_pdf = ["/pdf", "en pdf", "como pdf", "genera un pdf", "haz un pdf"]
-    keywords_docx = ["/docx", "en word", "como word", "en documento", "haz un word"]
-    keywords_md = ["/md", "en markdown", "como md"]
+    # Función auxiliar para detectar si hay alguna palabra clave presente
+    def contiene_palabras_clave(texto, lista_claves):
+        return any(clave in texto for clave in lista_claves)
+
+    # Listas ampliadas y más flexibles
+    claves_pdf = ["pdf", ".pdf", "archivo pdf", "documento pdf", "en pdf", "como pdf", "formato pdf"]
+    claves_docx = ["word", ".docx", "documento word", "en word", "como word", "archivo word"]
+    claves_md = ["markdown", ".md", "en markdown", "como md", "archivo md"]
 
     # Detectar PDF
-    if any(k in texto_lower for k in keywords_pdf):
+    if contiene_palabras_clave(texto_lower, claves_pdf):
         tipo_archivo = "pdf"
-        # Limpiar el texto: quitamos las palabras clave para que la IA no las procese
-        for k in keywords_pdf:
-            texto_real = texto_real.lower().replace(k, "").strip()
+        # Limpiar el texto: quitamos las palabras clave comunes para que la IA no se confunda
+        # Usamos un enfoque simple: reemplazar las palabras largas primero
+        for clave in sorted(claves_pdf, key=len, reverse=True):
+            texto_real = texto_real.lower().replace(clave, "").strip()
     
-    # Detectar DOCX (si no se detectó PDF antes)
-    elif any(k in texto_lower for k in keywords_docx):
+    # Detectar DOCX
+    elif contiene_palabras_clave(texto_lower, claves_docx):
         tipo_archivo = "docx"
-        for k in keywords_docx:
-            texto_real = texto_real.lower().replace(k, "").strip()
+        for clave in sorted(claves_docx, key=len, reverse=True):
+            texto_real = texto_real.lower().replace(clave, "").strip()
             
     # Detectar Markdown
-    elif any(k in texto_lower for k in keywords_md):
+    elif contiene_palabras_clave(texto_lower, claves_md):
         tipo_archivo = "md"
-        for k in keywords_md:
-            texto_real = texto_real.lower().replace(k, "").strip()
+        for clave in sorted(claves_md, key=len, reverse=True):
+            texto_real = texto_real.lower().replace(clave, "").strip()
 
-    # Comando de resumen (se mantiene igual o se puede hacer por palabra clave también)
-    if "/resumen" in texto_lower or "resume la conversación" in texto_lower or "haz un resumen" in texto_lower:
-        await generar_resumen(update, context)
-        return
+    # Comando de resumen (también ampliado)
+    if "/resumen" in texto_lower or "resume" in texto_lower or "resumen" in texto_lower:
+        # Evitar conflicto si solo dijo "resumen" sin contexto, pero intentamos generar
+        if len(texto_real.strip()) < 5 and "resumen" in texto_lower and "/resumen" not in texto_lower:
+             # Si solo dijo "resumen", usamos el historial directamente
+             pass 
+        else:
+             await generar_resumen(update, context)
+             return
 
     # Si después de limpiar no queda texto, pedir al usuario que escriba algo
     if not texto_real:
