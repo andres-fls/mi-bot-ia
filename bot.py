@@ -121,30 +121,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
     
-    # Detectar comandos de archivo (/pdf, /docx)
+    # --- NUEVA LÓGICA DE DETECCIÓN INTELIGENTE ---
     tipo_archivo = None
     texto_real = user_text
-    
-    if user_text.lower().startswith("/pdf"):
+    texto_lower = user_text.lower()
+
+    # Lista de palabras clave que indican deseo de archivo
+    keywords_pdf = ["/pdf", "en pdf", "como pdf", "genera un pdf", "haz un pdf"]
+    keywords_docx = ["/docx", "en word", "como word", "en documento", "haz un word"]
+    keywords_md = ["/md", "en markdown", "como md"]
+
+    # Detectar PDF
+    if any(k in texto_lower for k in keywords_pdf):
         tipo_archivo = "pdf"
-        texto_real = user_text[4:].strip()
-    elif user_text.lower().startswith("/docx"):
+        # Limpiar el texto: quitamos las palabras clave para que la IA no las procese
+        for k in keywords_pdf:
+            texto_real = texto_real.lower().replace(k, "").strip()
+    
+    # Detectar DOCX (si no se detectó PDF antes)
+    elif any(k in texto_lower for k in keywords_docx):
         tipo_archivo = "docx"
-        texto_real = user_text[5:].strip()
-    elif user_text.lower().startswith("/resumen"):
+        for k in keywords_docx:
+            texto_real = texto_real.lower().replace(k, "").strip()
+            
+    # Detectar Markdown
+    elif any(k in texto_lower for k in keywords_md):
+        tipo_archivo = "md"
+        for k in keywords_md:
+            texto_real = texto_real.lower().replace(k, "").strip()
+
+    # Comando de resumen (se mantiene igual o se puede hacer por palabra clave también)
+    if "/resumen" in texto_lower or "resume la conversación" in texto_lower or "haz un resumen" in texto_lower:
         await generar_resumen(update, context)
         return
 
+    # Si después de limpiar no queda texto, pedir al usuario que escriba algo
     if not texto_real:
-        await update.message.reply_text("Por favor escribe algo después del comando.")
+        await update.message.reply_text("¡Entendido! Pero necesito que me digas **qué** quieres que ponga en el archivo. 😉")
         return
 
+    # ... (El resto del código de memoria y llamada a IA se mantiene igual) ...
+    
     # 1. Gestionar Memoria
     chat_history = historial_conversaciones.get(user_id, [])
     
     messages = [{"role": "system", "content": "Eres un asistente útil. Responde en el mismo idioma que el usuario."}]
     messages.extend(chat_history)
-    messages.append({"role": "user", "content": texto_real})
+    messages.append({"role": "user", "content": texto_real}) # Usamos el texto limpio
 
     # Indicador de escritura
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
