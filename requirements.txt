@@ -1,3 +1,7 @@
 python-telegram-bot
 huggingface_hub
 requests
+python-dotenv
+flask
+fpdf
+python-docx
