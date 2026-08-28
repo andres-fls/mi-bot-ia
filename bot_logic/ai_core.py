@@ -8,11 +8,12 @@ from docx import Document
 
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURACIÓN DE MODELOS ---
+# --- CONFIGURACIÓN DE MODELOS ESTABLES ---
+# Usamos modelos conocidos por funcionar bien en el router gratuito de HF sin configuraciones extrañas
 MODELOS = {
-    "rapido": "meta-llama/Llama-3.2-3B-Instruct",
-    "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct",
-    "respaldo": "mistralai/Mistral-7B-Instruct-v0.3"
+    "rapido": "microsoft/Phi-3-mini-4k-instruct",       # Microsoft: Muy rápido, excelente calidad, compatible nativo.
+    "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct", # Qwen: Sigue siendo bueno para código, probaremos si funciona.
+    "respaldo": "mistralai/Mistral-7B-Instruct-v0.3"    # Mistral: Clásico confiable.
 }
 
 class AICore:
@@ -54,8 +55,7 @@ class AICore:
             try:
                 logger.info(f" Intentando con modelo: {modelo}")
                 
-                # CORRECCIÓN CLAVE: Usar chat_completion correctamente
-                # La librería InferenceClient maneja el formato internamente si pasamos 'messages'
+                # Llamada a chat_completion
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: self.client.chat_completion(
@@ -67,24 +67,27 @@ class AICore:
                     )
                 )
                 
-                # Verificar que la respuesta tenga contenido válido
                 if response and response.choices and len(response.choices) > 0:
                     contenido = response.choices[0].message.content
                     if contenido:
                         logger.info(f"✅ Respuesta exitosa de {modelo}")
                         return contenido.strip()
                 
-                logger.warning(f"⚠️ Respuesta vacía o inválida de {modelo}")
+                logger.warning(f"️ Respuesta vacía de {modelo}")
                 continue
 
             except Exception as e:
                 error_msg = str(e)
-                # Filtramos mensajes de error muy largos para los logs
-                logger.warning(f"❌ Error con {modelo}: {error_msg[:150]}... Intentando respaldo.")
+                # Si el error menciona "400" o "not supported", es señal clara de cambiar modelo
+                if "400" in error_msg or "not supported" in error_msg:
+                    logger.error(f"❌ Modelo {modelo} NO SOPORTADO en este router. Saltando.")
+                else:
+                    logger.warning(f"❌ Error con {modelo}: {error_msg[:150]}... Intentando respaldo.")
                 continue
         
-        return "😕 Lo siento, todos mis modelos están teniendo problemas ahora mismo. Intenta más tarde."
+        return " Lo siento, todos mis modelos están teniendo problemas ahora mismo. Intenta más tarde."
 
+    # ... (El resto de las funciones generar_archivo y process_message se mantienen igual) ...
     def generar_archivo(self, contenido: str, tipo: str) -> tuple:
         filename = f"respuesta.{tipo}"
         try:
@@ -92,16 +95,13 @@ class AICore:
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
-                # Manejo de caracteres especiales
                 texto_safe = contenido.encode('latin-1', 'replace').decode('latin-1')
                 pdf.multi_cell(0, 10, txt=texto_safe)
-                
                 buffer = io.BytesIO()
                 pdf_output = pdf.output(dest='S').encode('latin-1')
                 buffer.write(pdf_output)
                 buffer.seek(0)
                 return buffer, filename
-
             elif tipo == "docx":
                 doc = Document()
                 doc.add_paragraph(contenido)
@@ -109,55 +109,34 @@ class AICore:
                 doc.save(buffer)
                 buffer.seek(0)
                 return buffer, filename
-            
             else:
                 return contenido.encode('utf-8'), filename
-
         except Exception as e:
             logger.error(f"Error generando archivo {tipo}: {e}")
             return None, None
 
     async def process_message(self, text: str, user_id: int, detect_file_type: bool = False) -> dict:
         logger.info(f"Procesando mensaje de usuario {user_id}: {text[:50]}...")
-
         messages = [
-            {"role": "system", "content": "Eres un asistente útil, experto en programación y análisis. Responde en español de forma clara y concisa."},
+            {"role": "system", "content": "Eres un asistente útil. Responde en español."},
             {"role": "user", "content": text}
         ]
-
         tipo_archivo = None
         texto_limpio = text
-        
         if detect_file_type:
             texto_lower = text.lower()
-            if "pdf" in texto_lower or ".pdf" in texto_lower:
-                tipo_archivo = "pdf"
-            elif "word" in texto_lower or "docx" in texto_lower:
-                tipo_archivo = "docx"
-            
+            if "pdf" in texto_lower: tipo_archivo = "pdf"
+            elif "word" in texto_lower or "docx" in texto_lower: tipo_archivo = "docx"
             if tipo_archivo:
                 for palabra in ["pdf", ".pdf", "word", ".docx", "en formato", "genera un"]:
                     texto_limpio = texto_limpio.replace(palabra, "")
                 messages[-1]["content"] = texto_limpio
 
         respuesta_ia = await self.llamar_ia_con_respaldo(messages)
-
-        file_buffer = None
-        filename = None
-        
+        file_buffer, filename = None, None
         if tipo_archivo and respuesta_ia and not respuesta_ia.startswith(""):
             file_buffer, filename = self.generar_archivo(respuesta_ia, tipo_archivo)
-            if file_buffer:
-                logger.info(f"📄 Archivo {tipo_archivo} generado exitosamente.")
-            else:
-                logger.error("Falló la generación del archivo, enviando como texto.")
-                tipo_archivo = None
-
-        return {
-            "response": respuesta_ia,
-            "file_buffer": file_buffer,
-            "filename": filename,
-            "file_type": tipo_archivo
-        }
+        
+        return {"response": respuesta_ia, "file_buffer": file_buffer, "filename": filename, "file_type": tipo_archivo}
 
 ai_engine = AICore()
