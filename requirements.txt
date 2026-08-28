@@ -6,4 +6,3 @@ flask
 fpdf
 python-docx
 gunicorn
-nest_asyncio
