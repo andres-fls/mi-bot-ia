@@ -12,6 +12,11 @@ if current_dir not in sys.path:
 
 import logging
 import asyncio
+import nest_asyncio  # <--- IMPORTAR
+
+# APLICAR NEST_ASYNCIO INMEDIATAMENTE
+nest_asyncio.apply() 
+
 from flask import Flask, request, jsonify
 
 from bot_logic.handlers import start, handle_message

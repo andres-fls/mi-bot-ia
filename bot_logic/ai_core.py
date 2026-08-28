@@ -9,10 +9,10 @@ from docx import Document
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN DE MODELOS ---
+# Usamos modelos conocidos por funcionar bien en la API gratuita
 MODELOS = {
     "rapido": "meta-llama/Llama-3.2-3B-Instruct",
     "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct",
-    "potente_general": "meta-llama/Llama-3.1-8B-Instruct",
     "respaldo": "mistralai/Mistral-7B-Instruct-v0.3"
 }
 
@@ -25,7 +25,6 @@ class AICore:
             logger.warning("⚠️ HF_TOKEN no encontrado.")
             self.client = None
         else:
-            # Usamos timeout más alto para evitar cortes prematuros
             self.client = InferenceClient(token=self.hf_token, timeout=60)
             logger.info("✅ Cliente de Hugging Face conectado.")
 
@@ -37,7 +36,7 @@ class AICore:
             logger.info("🧠 Tarea compleja/código -> Usando modelo POTENTE.")
             return MODELOS["potente_codigo"]
         
-        logger.info("🧠 Tarea simple -> Usando modelo RÁPIDO.")
+        logger.info(" Tarea simple -> Usando modelo RÁPIDO.")
         return MODELOS["rapido"]
 
     async def llamar_ia_con_respaldo(self, messages: list, modelo_forzado: str = None) -> str:
@@ -56,31 +55,40 @@ class AICore:
             try:
                 logger.info(f" Intentando con modelo: {modelo}")
                 
-                # CORRECCIÓN CLAVE: Usar chat_completion con parámetros explícitos
-                # La API de HF a veces es sensible al formato de 'messages' y 'max_tokens'
-                response = await asyncio.get_event_loop().run_in_executor(
+                # CORRECCIÓN CLAVE: Usar text_generation con prompt formateado manualmente
+                # Esto evita problemas de compatibilidad con chat_completion en algunos modelos gratuitos
+                prompt = ""
+                for msg in messages:
+                    if msg["role"] == "system":
+                        prompt += f"<|system|>\n{msg['content']}<|end|>\n"
+                    elif msg["role"] == "user":
+                        prompt += f"<|user|>\n{msg['content']}<|end|>\n"
+                    elif msg["role"] == "assistant":
+                        prompt += f"<|assistant|>\n{msg['content']}<|end|>\n"
+                prompt += "<|assistant|>\n"
+
+                # Llamada directa a text_generation
+                response_text = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: self.client.chat_completion(
+                    lambda: self.client.text_generation(
+                        prompt=prompt,
                         model=modelo,
-                        messages=messages,
-                        max_tokens=1024,  # Reducido ligeramente para estabilidad
+                        max_new_tokens=1024,
                         temperature=0.7,
-                        top_p=0.95
+                        top_p=0.95,
+                        stop_sequences=["<|end|>"]
                     )
                 )
                 
-                # Verificar que la respuesta tenga contenido
-                if response.choices and len(response.choices) > 0:
-                    contenido = response.choices[0].message.content
+                if response_text:
                     logger.info(f"✅ Respuesta exitosa de {modelo}")
-                    return contenido
+                    return response_text.strip()
                 else:
                     logger.warning(f" Respuesta vacía de {modelo}")
                     continue
 
             except Exception as e:
                 error_msg = str(e)
-                # Si es un error 400, a veces es por el modelo específico, probamos respaldo
                 logger.warning(f"❌ Error con {modelo}: {error_msg[:100]}... Intentando respaldo.")
                 continue
         
