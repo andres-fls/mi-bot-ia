@@ -3,30 +3,36 @@ import logging
 from flask import Flask, request, jsonify
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+import asyncio # Asegúrate de importar asyncio
 
-# Importamos tokens 
+# Importamos tus tokens
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# Configuración de logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# HANDLERS
+# --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("¡Hola! Soy Mi-Bot-IA v2.0 (Webhook Mode).")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    
     user_text = update.message.text
     await update.message.reply_text(f"Recibí tu mensaje por Webhook: '{user_text}'. Pronto procesaré esto con IA.")
 
-# --- INICIALIZACIÓN DE LA APP DE TELEGRAM ---
-# Nota: En modo Webhook, NO usamos run_polling(). Solo creamos la aplicación para procesar updates.
+# --- INICIALIZACIÓN DE TELEGRAM APP ---
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# 🔴 CORRECCIÓN AQUÍ: Inicializar la aplicación manualmente para modo Webhook
+# Esto debe hacerse en el hilo principal antes de que Flask empiece a recibir requests
+try:
+    asyncio.run(application.initialize())
+    logger.info("✅ Aplicación de Telegram inicializada correctamente para Webhooks.")
+except Exception as e:
+    logger.error(f"❌ Error al inicializar Telegram App: {e}")
 
 # --- RUTAS FLASK ---
 
@@ -40,21 +46,15 @@ def health():
 
 @app.route('/telegram', methods=['POST'])
 def telegram_webhook():
-    # 1. Obtener el JSON que Telegram envía
     data = request.get_json()
-    
-    # 2. Convertirlo a un objeto Update de python-telegram-bot
     try:
         update = Update.de_json(data, application.bot)
         
-        # 3. Procesar el update (esto ejecutará tus handlers: start, handle_message, etc.)
-        # Usamos asyncio.run porque estamos fuera de un loop asíncrono principal
-        import asyncio
+        # Procesar el update
+        # Nota: application.process_update ya es una corrutina, la ejecutamos con asyncio.run
         asyncio.run(application.process_update(update))
         
         logger.info(f"✅ Mensaje procesado de usuario {update.effective_user.id}")
-        
-        # 4. Responder a Telegram inmediatamente con OK (para que sepa que lo recibimos)
         return jsonify({"status": "ok"}), 200
         
     except Exception as e:
