@@ -7,19 +7,10 @@ from huggingface_hub import InferenceClient
 from fpdf import FPDF
 from docx import Document
 
+from .model_registry import MODELOS, obtener_modelo
+
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================
-# MODELOS
-# ============================================================
-
-MODELOS = {
-    "rapido": "meta-llama/Llama-3.1-8B-Instruct",
-    "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct",
-    "respaldo": "meta-llama/Llama-3.1-8B-Instruct"
-}
 
 
 # ============================================================
@@ -101,18 +92,16 @@ class AICore:
         ):
 
             logger.info(
-                "🧠 Tarea compleja/código → "
-                "modelo POTENTE."
+                "🧠 Tarea compleja/código → modelo POTENTE."
             )
 
-            return MODELOS["potente_codigo"]
-
+            return obtener_modelo("potente_codigo")
 
         logger.info(
             "💬 Tarea simple → modelo RÁPIDO."
         )
 
-        return MODELOS["rapido"]
+        return obtener_modelo("rapido")
 
 
     # ========================================================
@@ -155,23 +144,25 @@ class AICore:
 
 
         # ----------------------------------------------------
-        # Construimos lista de intentos
-        # evitando repetir el mismo modelo.
+        # Construcción de lista de intentos
         # ----------------------------------------------------
 
         intentos = []
 
-        for modelo in [
+        modelos_a_probar = [
             modelo_actual,
             MODELOS["respaldo"],
-        ]:
+        ]
 
-            if modelo not in intentos:
+        for modelo in modelos_a_probar:
+
+            if modelo and modelo not in intentos:
+
                 intentos.append(modelo)
 
 
         # ----------------------------------------------------
-        # Intentamos cada modelo
+        # Intentar modelos
         # ----------------------------------------------------
 
         for modelo in intentos:
@@ -184,10 +175,10 @@ class AICore:
 
 
                 # ------------------------------------------------
-                # InferenceClient es síncrono en esta llamada.
+                # InferenceClient es síncrono.
                 #
-                # Lo ejecutamos fuera del event loop para no
-                # bloquear Telegram.
+                # Lo ejecutamos en un thread para evitar
+                # bloquear el event loop de Telegram.
                 # ------------------------------------------------
 
                 response = await asyncio.to_thread(
@@ -206,7 +197,7 @@ class AICore:
 
 
                 # ------------------------------------------------
-                # Validación de respuesta
+                # Validar respuesta
                 # ------------------------------------------------
 
                 if (
@@ -277,6 +268,10 @@ class AICore:
 
         try:
 
+            # ------------------------------------------------
+            # PDF
+            # ------------------------------------------------
+
             if tipo == "pdf":
 
                 pdf = FPDF()
@@ -325,6 +320,10 @@ class AICore:
                 return buffer, filename
 
 
+            # ------------------------------------------------
+            # DOCX
+            # ------------------------------------------------
+
             elif tipo == "docx":
 
                 doc = Document()
@@ -341,6 +340,10 @@ class AICore:
 
                 return buffer, filename
 
+
+            # ------------------------------------------------
+            # Otros formatos
+            # ------------------------------------------------
 
             else:
 
@@ -377,6 +380,10 @@ class AICore:
             f"{user_id}: {text[:80]}..."
         )
 
+
+        # ----------------------------------------------------
+        # Mensajes enviados al modelo
+        # ----------------------------------------------------
 
         messages = [
 
@@ -445,7 +452,7 @@ class AICore:
 
 
         # ----------------------------------------------------
-        # Obtener respuesta IA
+        # Obtener respuesta de IA
         # ----------------------------------------------------
 
         respuesta_ia = await self.llamar_ia_con_respaldo(
@@ -454,12 +461,11 @@ class AICore:
 
 
         # ----------------------------------------------------
-        # Generar archivo
+        # Generar archivo si fue solicitado
         # ----------------------------------------------------
 
         file_buffer = None
         filename = None
-
 
         if tipo_archivo and respuesta_ia:
 
@@ -470,6 +476,10 @@ class AICore:
                 )
             )
 
+
+        # ----------------------------------------------------
+        # Resultado
+        # ----------------------------------------------------
 
         return {
 
