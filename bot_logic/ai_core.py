@@ -8,12 +8,12 @@ from docx import Document
 
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURACIÓN DE MODELOS ESTABLES ---
-# Usamos modelos conocidos por funcionar bien en el router gratuito de HF sin configuraciones extrañas
+# --- CONFIGURACIÓN DE MODELOS COMPATIBLES CON EL ROUTER ESTÁNDAR ---
+# Estos modelos funcionan nativamente en router.huggingface.co sin configurar proveedores externos
 MODELOS = {
-    "rapido": "microsoft/Phi-3-mini-4k-instruct",       # Microsoft: Muy rápido, excelente calidad, compatible nativo.
-    "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct", # Qwen: Sigue siendo bueno para código, probaremos si funciona.
-    "respaldo": "mistralai/Mistral-7B-Instruct-v0.3"    # Mistral: Clásico confiable.
+    "rapido": "microsoft/Phi-3-mini-4k-instruct",       # Microsoft Phi-3: Rápido, inteligente y 100% compatible.
+    "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct", # Qwen Coder: Probaremos si funciona, si no, usará respaldo.
+    "respaldo": "google/gemma-2-2b-it"                  # Google Gemma 2B: Ligero y muy estable en el router free.
 }
 
 class AICore:
@@ -55,7 +55,6 @@ class AICore:
             try:
                 logger.info(f" Intentando con modelo: {modelo}")
                 
-                # Llamada a chat_completion
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: self.client.chat_completion(
@@ -78,16 +77,14 @@ class AICore:
 
             except Exception as e:
                 error_msg = str(e)
-                # Si el error menciona "400" o "not supported", es señal clara de cambiar modelo
                 if "400" in error_msg or "not supported" in error_msg:
                     logger.error(f"❌ Modelo {modelo} NO SOPORTADO en este router. Saltando.")
                 else:
                     logger.warning(f"❌ Error con {modelo}: {error_msg[:150]}... Intentando respaldo.")
                 continue
         
-        return " Lo siento, todos mis modelos están teniendo problemas ahora mismo. Intenta más tarde."
+        return "😕 Lo siento, todos mis modelos están teniendo problemas ahora mismo. Intenta más tarde."
 
-    # ... (El resto de las funciones generar_archivo y process_message se mantienen igual) ...
     def generar_archivo(self, contenido: str, tipo: str) -> tuple:
         filename = f"respuesta.{tipo}"
         try:
