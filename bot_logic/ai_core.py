@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 MODELOS = {
-    "rapido": "microsoft/Phi-3-mini-4k-instruct",
+    "rapido": "meta-llama/Llama-3.1-8B-Instruct",
     "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct",
-    "respaldo": "google/gemma-2-2b-it",
+    "respaldo": "meta-llama/Llama-3.1-8B-Instruct"
 }
 
 
