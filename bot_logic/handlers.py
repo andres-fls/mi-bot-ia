@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        " ¡Hola! Soy Mi-Bot-IA v3.0.\n\n"
+        " ¡Hola! Soy Mi-Bot-IA v3.1.\n\n"
         "Tengo cerebro propio con múltiples modelos de IA:\n"
         " Rápido para charlas simples.\n"
         "💪 Potente para código y lógica.\n"
@@ -19,10 +19,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
     
-    # Eliminamos send_chat_action para evitar conflictos de loop en este entorno específico
-    # La IA responderá lo suficientemente rápido para que no sea necesario el indicador "typing"
-    
     try:
+        # 1. Llamar al núcleo de IA
         resultado = await ai_engine.process_message(user_text, user_id, detect_file_type=True)
         
         respuesta = resultado["response"]
@@ -30,6 +28,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filename = resultado["filename"]
         file_type = resultado["file_type"]
 
+        # 2. Enviar respuesta
         if file_buffer and filename:
             await update.message.reply_document(
                 document=file_buffer,
@@ -43,5 +42,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(respuesta)
 
     except Exception as e:
-        logger.error(f"Error en handle_message: {e}", exc_info=True)
-        await update.message.reply_text("⚠️ Ocurrió un error interno inesperado. Intenta de nuevo.")
+        # Capturamos cualquier error inesperado para que el bot no se caiga
+        logger.error(f"Error inesperado en handle_message: {e}", exc_info=True)
+        # Enviamos un mensaje amigable al usuario en lugar de romper el flujo
+        try:
+            await update.message.reply_text("⚠️ Ocurrió un error interno inesperado. Intenta de nuevo en unos segundos.")
+        except:
+            pass # Si ni siquiera podemos enviar el error, mejor no hacer nada

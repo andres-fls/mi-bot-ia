@@ -9,7 +9,6 @@ from docx import Document
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN DE MODELOS ---
-# Usamos modelos conocidos por funcionar bien en la API gratuita
 MODELOS = {
     "rapido": "meta-llama/Llama-3.2-3B-Instruct",
     "potente_codigo": "Qwen/Qwen2.5-Coder-7B-Instruct",
@@ -41,7 +40,7 @@ class AICore:
 
     async def llamar_ia_con_respaldo(self, messages: list, modelo_forzado: str = None) -> str:
         if not self.client:
-            return "️ Error: No tengo acceso a los servicios de IA (falta HF_TOKEN)."
+            return "⚠️ Error: No tengo acceso a los servicios de IA (falta HF_TOKEN)."
 
         if modelo_forzado:
             modelo_actual = modelo_forzado
@@ -55,41 +54,33 @@ class AICore:
             try:
                 logger.info(f" Intentando con modelo: {modelo}")
                 
-                # CORRECCIÓN CLAVE: Usar text_generation con prompt formateado manualmente
-                # Esto evita problemas de compatibilidad con chat_completion en algunos modelos gratuitos
-                prompt = ""
-                for msg in messages:
-                    if msg["role"] == "system":
-                        prompt += f"<|system|>\n{msg['content']}<|end|>\n"
-                    elif msg["role"] == "user":
-                        prompt += f"<|user|>\n{msg['content']}<|end|>\n"
-                    elif msg["role"] == "assistant":
-                        prompt += f"<|assistant|>\n{msg['content']}<|end|>\n"
-                prompt += "<|assistant|>\n"
-
-                # Llamada directa a text_generation
-                response_text = await asyncio.get_event_loop().run_in_executor(
+                # CORRECCIÓN CLAVE: Usar chat_completion correctamente
+                # La librería InferenceClient maneja el formato internamente si pasamos 'messages'
+                response = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: self.client.text_generation(
-                        prompt=prompt,
+                    lambda: self.client.chat_completion(
                         model=modelo,
-                        max_new_tokens=1024,
+                        messages=messages,
+                        max_tokens=1024,
                         temperature=0.7,
-                        top_p=0.95,
-                        stop_sequences=["<|end|>"]
+                        top_p=0.95
                     )
                 )
                 
-                if response_text:
-                    logger.info(f"✅ Respuesta exitosa de {modelo}")
-                    return response_text.strip()
-                else:
-                    logger.warning(f" Respuesta vacía de {modelo}")
-                    continue
+                # Verificar que la respuesta tenga contenido válido
+                if response and response.choices and len(response.choices) > 0:
+                    contenido = response.choices[0].message.content
+                    if contenido:
+                        logger.info(f"✅ Respuesta exitosa de {modelo}")
+                        return contenido.strip()
+                
+                logger.warning(f"⚠️ Respuesta vacía o inválida de {modelo}")
+                continue
 
             except Exception as e:
                 error_msg = str(e)
-                logger.warning(f"❌ Error con {modelo}: {error_msg[:100]}... Intentando respaldo.")
+                # Filtramos mensajes de error muy largos para los logs
+                logger.warning(f"❌ Error con {modelo}: {error_msg[:150]}... Intentando respaldo.")
                 continue
         
         return "😕 Lo siento, todos mis modelos están teniendo problemas ahora mismo. Intenta más tarde."
@@ -101,6 +92,7 @@ class AICore:
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
+                # Manejo de caracteres especiales
                 texto_safe = contenido.encode('latin-1', 'replace').decode('latin-1')
                 pdf.multi_cell(0, 10, txt=texto_safe)
                 
@@ -129,7 +121,7 @@ class AICore:
         logger.info(f"Procesando mensaje de usuario {user_id}: {text[:50]}...")
 
         messages = [
-            {"role": "system", "content": "Eres un asistente útil, experto en programación y análisis. Responde en español."},
+            {"role": "system", "content": "Eres un asistente útil, experto en programación y análisis. Responde en español de forma clara y concisa."},
             {"role": "user", "content": text}
         ]
 
@@ -156,7 +148,7 @@ class AICore:
         if tipo_archivo and respuesta_ia and not respuesta_ia.startswith(""):
             file_buffer, filename = self.generar_archivo(respuesta_ia, tipo_archivo)
             if file_buffer:
-                logger.info(f" Archivo {tipo_archivo} generado exitosamente.")
+                logger.info(f"📄 Archivo {tipo_archivo} generado exitosamente.")
             else:
                 logger.error("Falló la generación del archivo, enviando como texto.")
                 tipo_archivo = None
